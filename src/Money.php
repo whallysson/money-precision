@@ -99,7 +99,7 @@ class Money implements MoneyInterface
             'add' => bcadd($value1, $value2),
             'sub' => bcsub($value1, $value2),
             'mul' => bcmul($value1, $value2),
-            'div' => bcdiv($value1, $value2),
+            'div' => bcdiv($value1, $value2)
         ], function () {
             throw new \InvalidArgumentException("Invalid operation");
         });

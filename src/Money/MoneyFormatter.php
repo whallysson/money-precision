@@ -41,7 +41,7 @@ class MoneyFormatter implements FormatterInterface
 
         return match($currency->getSymbolPosition(), [
             'before' => sprintf('%s %s', $currency->getSymbol(), $formattedNumber),
-            'after' => sprintf('%s %s', $formattedNumber, $currency->getSymbol()),
+            'after' => sprintf('%s %s', $formattedNumber, $currency->getSymbol())
         ], sprintf('%s %s', $currency->getSymbol(), $formattedNumber));
     }
 }

@@ -1,5 +1,14 @@
 # MoneyPrecision
 
+[![Maintainer](http://img.shields.io/badge/maintainer-@whallysson-blue.svg?style=flat-square)](https://www.linkedin.com/in/whallyssonavelino/?locale=en_US)
+[![Source Code](http://img.shields.io/badge/source-whallysson/money--precision-blue.svg?style=flat-square)](https://github.com/whallysson/money-precision)
+[![PHP from Packagist](https://img.shields.io/packagist/php-v/whallysson/money-precision.svg?style=flat-square)](https://packagist.org/packages/whallysson/money-precision)
+[![Latest Version](https://img.shields.io/github/release/whallysson/money-precision.svg?style=flat-square)](https://github.com/whallysson/money-precision/releases)
+[![Software License](https://img.shields.io/badge/license-MIT-brightgreen.svg?style=flat-square)](LICENSE)
+[![Build](https://img.shields.io/scrutinizer/build/g/whallysson/money-precision.svg?style=flat-square)](https://scrutinizer-ci.com/g/whallysson/money-precision)
+[![Quality Score](https://img.shields.io/scrutinizer/g/whallysson/money-precision.svg?style=flat-square)](https://scrutinizer-ci.com/g/whallysson/money-precision)
+[![Total Downloads](https://img.shields.io/packagist/dt/whallysson/money-precision.svg?style=flat-square)](https://packagist.org/packages/whallysson/money-precision)
+
 **MoneyPrecision** is a PHP library designed to handle monetary values with precision, ensuring accurate conversions, formatting, and arithmetic operations. With support for multiple currencies, it is ideal for applications that demand reliability in financial calculations.
 
 ---
