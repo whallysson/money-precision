@@ -1,0 +1,29 @@
+{
+  "name": "whallysson/money-precision",
+  "description": "A simple library for precise monetary value handling and financial calculations",
+  "keywords": [
+    "Money",
+    "money-precision",
+    "money precision"
+  ],
+  "license": "MIT",
+  "authors": [
+    {
+      "name": "Whallysson Avelino",
+      "email": "whallysson.dev@gmail.com",
+      "role": "Developer"
+    }
+  ],
+  "require": {
+    "php": ">=7.4",
+    "ext-bcmath": "*"
+  },
+  "autoload": {
+    "files": [
+      "src/helpers.php"
+    ],
+    "psr-4": {
+      "Whallysson\\Money\\": "src"
+    }
+  }
+}
