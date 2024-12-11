@@ -47,7 +47,7 @@ Install **MoneyPrecision** with [Composer](https://getcomposer.org/):
 
 
 ```bash
-"whallysson/money-precision": "^1.0"
+"whallysson/money-precision": "^2.0"
 ```
 
 or run
