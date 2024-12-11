@@ -155,7 +155,7 @@ fabric.properties
 
 # PHPUnit
 /app/phpunit.xml
-/phpunit.xml
+#/phpunit.xml
 
 # Build data
 /build/
@@ -187,6 +187,6 @@ $RECYCLE.BIN/
 *.lnk
 
 # Rector
-rector.php
+#rector.php
 
 # End of https://www.toptal.com/developers/gitignore/api/macos,windows,phpunit,phpstorm,composer

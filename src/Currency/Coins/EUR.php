@@ -10,7 +10,6 @@ use Whallysson\Money\Currency\AbstractCurrency;
  * Class EUR
  *
  * @author Whallysson Avelino <whallysson.dev@gmail.com>
- * @package Whallysson\Money\Currency\Coins
  */
 class EUR extends AbstractCurrency
 {
