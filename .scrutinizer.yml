@@ -6,6 +6,8 @@ filter:
     - "src/*"
 
 build:
+  image: default-jammy
+
   environment:
     variables:
       COMPOSER_MEMORY_LIMIT: "-1"
