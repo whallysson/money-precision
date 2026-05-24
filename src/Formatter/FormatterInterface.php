@@ -14,7 +14,7 @@ use Whallysson\Money\Currency\CurrencyInterface;
 interface FormatterInterface
 {
     public function format(
-        string $value,
+        int $minorUnits,
         CurrencyInterface $currency,
         bool $showSymbol = true,
         bool $showThousandsSeparator = true

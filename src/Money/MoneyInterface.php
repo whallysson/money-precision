@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace Whallysson\Money\Money;
 
+use Whallysson\Money\Currency\CurrencyInterface;
+use Whallysson\Money\RoundingMode;
+
 /**
  * Interface MoneyInterface
  *
@@ -11,49 +14,38 @@ namespace Whallysson\Money\Money;
  */
 interface MoneyInterface
 {
-    /**
-     * @param  int|float|string  $value
-     */
-    public function amount($value): self;
-
     public function int(): int;
+
+    public function toCents(): int;
+
+    public function toMinorUnits(): int;
 
     public function decimal(int $precision = 2): string;
 
-    /**
-     * @param  MoneyInterface|int|float|string  $value
-     */
-    public function add($value): self;
+    public function toDecimal(?int $precision = null): string;
 
-    /**
-     * @param  MoneyInterface|int|float|string  $value
-     */
-    public function sub($value): self;
+    public function currency(): CurrencyInterface;
 
-    /**
-     * @param  MoneyInterface|int|float|string  $value
-     */
-    public function mul($value): self;
+    public function add(self $money): self;
 
-    /**
-     * @param  MoneyInterface|int|float|string  $value
-     */
-    public function div($value): self;
+    public function sub(self $money): self;
 
-    /**
-     * @param  MoneyInterface|int|float|string  $value
-     */
-    public function equals($value): bool;
+    public function mul(int|string $multiplier, RoundingMode $roundingMode): self;
 
-    /**
-     * @param  MoneyInterface|int|float|string  $value
-     */
-    public function greaterThan($value): bool;
+    public function div(int|string $divisor, RoundingMode $roundingMode): self;
 
-    /**
-     * @param  MoneyInterface|int|float|string  $value
-     */
-    public function lessThan($value): bool;
+    public function compare(self $money): int;
+
+    public function equals(self $money): bool;
+
+    public function greaterThan(self $money): bool;
+
+    public function lessThan(self $money): bool;
 
     public function isDecimal(): bool;
+
+    public function format(
+        bool $showSymbol = true,
+        bool $showThousandsSeparator = true
+    ): string;
 }

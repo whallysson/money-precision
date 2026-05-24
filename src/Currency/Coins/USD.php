@@ -19,8 +19,7 @@ class USD extends AbstractCurrency
             'USD',
             '$',
             '.',
-            ',',
-            'before'
+            ','
         );
     }
 }

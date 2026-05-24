@@ -9,14 +9,15 @@ namespace Whallysson\Money\Currency;
  *
  * @author Whallysson Avelino <whallysson.dev@gmail.com>
  */
-class AbstractCurrency implements CurrencyInterface
+abstract class AbstractCurrency implements CurrencyInterface
 {
     public function __construct(
-        protected string $code,
-        protected string $symbol,
-        protected string $decimalSeparator,
-        protected string $thousandsSeparator,
-        protected string $symbolPosition = 'before'
+        protected readonly string $code,
+        protected readonly string $symbol,
+        protected readonly string $decimalSeparator,
+        protected readonly string $thousandsSeparator,
+        protected readonly string $symbolPosition = 'before',
+        protected readonly int $fractionDigits = 2
     ) {}
 
     public function getSymbol(): string
@@ -42,5 +43,10 @@ class AbstractCurrency implements CurrencyInterface
     public function getCode(): string
     {
         return $this->code;
+    }
+
+    public function getFractionDigits(): int
+    {
+        return $this->fractionDigits;
     }
 }

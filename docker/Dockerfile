@@ -1,4 +1,4 @@
-ARG PHP=8.1
+ARG PHP=8.4
 FROM php:${PHP}-cli-alpine
 
 RUN apk update && apk add \

@@ -19,8 +19,7 @@ class BRL extends AbstractCurrency
             'BRL',
             'R$',
             ',',
-            '.',
-            'before'
+            '.'
         );
     }
 }

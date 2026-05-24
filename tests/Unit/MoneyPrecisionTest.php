@@ -2,163 +2,192 @@
 
 declare(strict_types=1);
 
+use Whallysson\Money\Currency\AbstractCurrency;
 use Whallysson\Money\Currency\Coins\BRL;
 use Whallysson\Money\Currency\Coins\EUR;
 use Whallysson\Money\Currency\Coins\USD;
 use Whallysson\Money\Currency\CurrencyFactory;
+use Whallysson\Money\Currency\CurrencyInterface;
 use Whallysson\Money\Money;
 use Whallysson\Money\Money\MoneyFormatter;
+use Whallysson\Money\RoundingMode;
 
-beforeEach(function () {
-    $this->formatter = new MoneyFormatter;
-    $this->factory = new CurrencyFactory;
+it('separates cents and decimal constructors explicitly', function () {
+    expect(Money::fromCents(56)->toDecimal())->toBe('0.56')
+        ->and(Money::fromCents(10086)->decimal())->toBe('100.86')
+        ->and(Money::fromDecimal('56')->toCents())->toBe(5600)
+        ->and(Money::fromDecimal('56.60')->int())->toBe(5660)
+        ->and(Money::fromMinorUnits(1234)->toMinorUnits())->toBe(1234);
 });
 
-it('should convert integer to decimal correctly', function () {
-    expect(Money::of(10086)->decimal())->toBe('100.86')
-        ->and(Money::of(5660)->decimal())->toBe('56.60');
+it('keeps decimal rendering exact without floats', function () {
+    expect(Money::fromCents(10086)->toDecimal(4))->toBe('100.8600')
+        ->and(Money::fromCents(10086)->decimal(3))->toBe('100.860')
+        ->and(Money::fromCents(-123)->toDecimal())->toBe('-1.23');
 });
 
-it('should convert decimal to integer correctly', function () {
-    expect(Money::of(100.86)->int())->toBe(10086)
-        ->and(Money::of('56.60')->int())->toBe(5660);
+it('renders currencies without fraction digits', function () {
+    $currency = new class extends AbstractCurrency
+    {
+        public function __construct()
+        {
+            parent::__construct('JPY', '¥', '.', ',', 'before', 0);
+        }
+    };
+
+    expect(Money::fromDecimal('1234', $currency)->toDecimal())->toBe('1234')
+        ->and(Money::fromCents(-1234, $currency)->toDecimal(0))->toBe('-1234');
 });
 
-it('should handle different decimal precisions', function () {
-    expect(Money::of(10086)->decimal(3))->toBe('100.860');
+it('rejects ambiguous or lossy decimal inputs', function () {
+    expect(fn () => Money::fromDecimal('R$ 1.234,56'))->toThrow(InvalidArgumentException::class, 'Invalid decimal money format')
+        ->and(fn () => Money::fromDecimal('1.234'))->toThrow(InvalidArgumentException::class, 'Decimal money format exceeds currency fraction digits')
+        ->and(fn () => Money::fromDecimal('92233720368547758.08'))->toThrow(InvalidArgumentException::class, 'Money amount exceeds PHP integer range')
+        ->and(fn () => Money::fromDecimal('922337203685477580.80'))->toThrow(InvalidArgumentException::class, 'Money amount exceeds PHP integer range')
+        ->and(fn () => Money::fromCents(1)->toDecimal(-1))->toThrow(InvalidArgumentException::class, 'Precision must be greater than or equal to zero')
+        ->and(fn () => Money::fromCents(123)->toDecimal(1))->toThrow(InvalidArgumentException::class, 'Precision cannot be lower than currency fraction digits');
 });
 
-it('should perform addition correctly', function () {
-    $money1 = Money::of(100.86);
-    $money2 = Money::of(56);
-    expect($money1->add($money2)->decimal())->toBe('156.86');
+it('parses formatted money using the selected currency locale', function () {
+    expect(Money::parse('R$ 1.234,56')->toCents())->toBe(123456)
+        ->and(Money::parse('$ 1,234.56', 'USD')->toCents())->toBe(123456)
+        ->and(Money::parse('1.234,56 €', 'EUR')->toCents())->toBe(123456)
+        ->and(Money::parse('R$ -1.234,56')->toDecimal())->toBe('-1234.56')
+        ->and(fn () => Money::parse(''))->toThrow(InvalidArgumentException::class, 'Invalid money format');
 });
 
-it('should perform subtraction correctly', function () {
-    $money1 = Money::of(100.86);
-    $money2 = Money::of(56.60);
-    expect($money1->sub($money2)->decimal())->toBe('44.26');
+it('parses custom currencies without symbol or grouping separators', function () {
+    $currency = new class extends AbstractCurrency
+    {
+        public function __construct()
+        {
+            parent::__construct('TST', '', '.', '', 'before', 2);
+        }
+    };
+
+    expect(Money::parse('1234.56', $currency)->toCents())->toBe(123456);
 });
 
-it('should perform multiplication correctly', function () {
-    $money1 = Money::of(100.86);
-    expect($money1->mul(2)->decimal())->toBe('201.72');
+it('formats currencies without converting through float', function () {
+    expect(Money::fromDecimal('100.86')->format())->toBe('R$ 100,86')
+        ->and(Money::fromDecimal('56.60', 'USD')->format())->toBe('$ 56.60')
+        ->and(Money::fromDecimal('356.78', 'EUR')->format())->toBe('356,78 €')
+        ->and(Money::fromDecimal('1000.86')->format(showSymbol: false))->toBe('1.000,86')
+        ->and(Money::fromDecimal('1000.86', 'USD')->format(showThousandsSeparator: false))->toBe('$ 1000.86')
+        ->and(Money::fromCents(9007199254740993, 'USD')->format())->toBe('$ 90,071,992,547,409.93');
 });
 
-it('should perform division correctly', function () {
-    $money1 = Money::of(100.86);
-    expect($money1->div(2)->decimal())->toBe('50.43');
+it('covers formatter fallbacks for unusual currency definitions', function () {
+    $currency = new class extends AbstractCurrency
+    {
+        public function __construct()
+        {
+            parent::__construct('XTS', '¤', '.', '', 'middle', 0);
+        }
+    };
+
+    $formatter = new MoneyFormatter;
+
+    expect($formatter->format(1234, $currency))->toBe('¤ 1234')
+        ->and($formatter->format(-1234, $currency, false))->toBe('-1234');
 });
 
-it('should format Brazilian Real (BRL) by default', function () {
-    $money = Money::of(100.86);
-    expect($money->format())->toBe('R$ 100,86');
+it('performs immutable arithmetic only between matching currencies', function () {
+    $money = Money::fromDecimal('100.86');
+    $increment = Money::fromCents(5600);
+    $total = $money->add($increment);
+
+    expect($money->toDecimal())->toBe('100.86')
+        ->and($increment->toDecimal())->toBe('56.00')
+        ->and($total->toDecimal())->toBe('156.86')
+        ->and($total->sub(Money::fromDecimal('0.86'))->toDecimal())->toBe('156.00')
+        ->and($total->isDecimal())->toBeTrue();
 });
 
-it('should format USD currency', function () {
-    $money = Money::of(56.60);
-    expect($money->format('USD'))->toBe('$ 56.60');
+it('compares money values with currency safety', function () {
+    $money = Money::fromDecimal('100.86');
+    $same = Money::fromCents(10086);
+    $lower = Money::fromDecimal('56.60');
+    $usd = Money::fromDecimal('100.86', 'USD');
+
+    expect($money->compare($same))->toBe(0)
+        ->and($money->equals($same))->toBeTrue()
+        ->and($money->greaterThan($lower))->toBeTrue()
+        ->and($lower->lessThan($money))->toBeTrue()
+        ->and(fn () => $money->add($usd))->toThrow(InvalidArgumentException::class, 'Cannot operate with different currencies: BRL and USD')
+        ->and(fn () => $money->compare($usd))->toThrow(InvalidArgumentException::class, 'Cannot operate with different currencies: BRL and USD');
 });
 
-it('should format EUR currency', function () {
-    $money = Money::of(356.78);
-    expect($money->format('EUR'))->toBe('356,78 €');
+it('requires explicit rounding when multiplying or dividing', function () {
+    expect(Money::fromCents(1)->mul('0.5', RoundingMode::HalfAwayFromZero)->toCents())->toBe(1)
+        ->and(Money::fromCents(1)->mul('0.5', RoundingMode::HalfTowardsZero)->toCents())->toBe(0)
+        ->and(Money::fromCents(10)->mul('2.5', RoundingMode::TowardsZero)->toCents())->toBe(25)
+        ->and(Money::fromCents(5)->div(2, RoundingMode::HalfAwayFromZero)->toCents())->toBe(3)
+        ->and(Money::fromCents(5)->div(2, RoundingMode::HalfTowardsZero)->toCents())->toBe(2)
+        ->and(Money::fromCents(2)->div(1, RoundingMode::HalfAwayFromZero)->toCents())->toBe(2);
 });
 
-it('should compare money values correctly', function () {
-    $money1 = Money::of(100.86);
-    $money2 = Money::of(56.60);
-
-    expect($money1->equals($money2))->toBeFalse()
-        ->and($money1->greaterThan($money2))->toBeTrue()
-        ->and($money1->lessThan($money2))->toBeFalse();
+it('supports all rounding modes with signed values', function () {
+    expect(Money::fromCents(5)->div(2, RoundingMode::TowardsZero)->toCents())->toBe(2)
+        ->and(Money::fromCents(5)->div(2, RoundingMode::AwayFromZero)->toCents())->toBe(3)
+        ->and(Money::fromCents(5)->div(2, RoundingMode::PositiveInfinity)->toCents())->toBe(3)
+        ->and(Money::fromCents(-5)->div(2, RoundingMode::PositiveInfinity)->toCents())->toBe(-2)
+        ->and(Money::fromCents(5)->div(2, RoundingMode::NegativeInfinity)->toCents())->toBe(2)
+        ->and(Money::fromCents(-5)->div(2, RoundingMode::NegativeInfinity)->toCents())->toBe(-3)
+        ->and(Money::fromCents(5)->div(2, RoundingMode::HalfEven)->toCents())->toBe(2)
+        ->and(Money::fromCents(7)->div(2, RoundingMode::HalfEven)->toCents())->toBe(4)
+        ->and(Money::fromCents(8)->div(3, RoundingMode::HalfEven)->toCents())->toBe(3)
+        ->and(Money::fromCents(7)->div(3, RoundingMode::HalfEven)->toCents())->toBe(2);
 });
 
-it('should throw exception for invalid operation in add', function () {
-    $money1 = Money::of(100.86);
-    expect(fn () => $money1->add(''))->toThrow(\InvalidArgumentException::class);
+it('rejects invalid factors and division by zero', function () {
+    expect(fn () => Money::fromCents(1)->mul('invalid', RoundingMode::TowardsZero))
+        ->toThrow(InvalidArgumentException::class, 'Multiplier must be an integer or decimal string')
+        ->and(fn () => Money::fromCents(1)->div('invalid', RoundingMode::TowardsZero))
+        ->toThrow(InvalidArgumentException::class, 'Divisor must be an integer or decimal string')
+        ->and(fn () => Money::fromCents(1)->div('0', RoundingMode::TowardsZero))
+        ->toThrow(InvalidArgumentException::class, 'Division by zero');
 });
 
-it('should throw exception for invalid operation in sub', function () {
-    $money1 = Money::of(100.86);
-    expect(fn () => $money1->sub(''))->toThrow(\InvalidArgumentException::class);
+it('guards internal integer invariants', function () {
+    $money = Money::fromCents(1);
+    $divideAndRound = new ReflectionMethod($money, 'divideAndRound');
+    $normalizeIntegerString = new ReflectionMethod(Money::class, 'normalizeIntegerString');
+
+    expect(fn () => $divideAndRound->invoke($money, '1', '0', RoundingMode::TowardsZero))
+        ->toThrow(InvalidArgumentException::class, 'Division by zero')
+        ->and(fn () => $normalizeIntegerString->invoke(null, 'invalid'))
+        ->toThrow(InvalidArgumentException::class, 'Invalid integer money format');
 });
 
-it('should throw exception for invalid operation in mul', function () {
-    $money1 = Money::of(100.86);
-    expect(fn () => $money1->mul(''))->toThrow(\InvalidArgumentException::class);
+it('registers and creates currencies correctly', function () {
+    $factory = new CurrencyFactory;
+
+    expect($factory->create('brl'))->toBeInstanceOf(BRL::class)
+        ->and($factory->create('USD'))->toBeInstanceOf(USD::class)
+        ->and($factory->create('EUR'))->toBeInstanceOf(EUR::class)
+        ->and($factory->getAvailableCurrencies())->toContain('BRL', 'USD', 'EUR')
+        ->and(fn () => $factory->create('GBP'))->toThrow(InvalidArgumentException::class, 'Unsupported currency: GBP');
 });
 
-it('should throw exception for invalid operation in div', function () {
-    $money1 = Money::of(100.86);
-    expect(fn () => $money1->div('null'))->toThrow(\InvalidArgumentException::class);
-});
+it('allows custom currencies to be registered', function () {
+    $currency = new class extends AbstractCurrency
+    {
+        public function __construct()
+        {
+            parent::__construct('GBP', '£', '.', ',', 'before', 2);
+        }
+    };
 
-it('MoneyFormatter should format currencies correctly with symbol and thousand separator', function () {
-    $formattedBRL = $this->formatter->format('1000.86', CurrencyFactory::get('BRL'), true, true);
-    $formattedUSD = $this->formatter->format('1000.86', CurrencyFactory::get('USD'), true, true);
-    $formattedEUR = $this->formatter->format('1000.86', CurrencyFactory::get('EUR'), true, true);
+    $factory = new CurrencyFactory;
+    $factory->register($currency);
+    $created = $factory->create('GBP');
 
-    expect($formattedBRL)->toBe('R$ 1.000,86');
-    expect($formattedUSD)->toBe('$ 1,000.86');
-    expect($formattedEUR)->toBe('1.000,86 €');
-});
-
-it('MoneyFormatter should format currencies correctly without symbol', function () {
-    $formattedBRL = $this->formatter->format('1000.86', CurrencyFactory::get('BRL'), false, true);
-    $formattedUSD = $this->formatter->format('1000.86', CurrencyFactory::get('USD'), false, true);
-    $formattedEUR = $this->formatter->format('1000.86', CurrencyFactory::get('EUR'), false, true);
-
-    expect($formattedBRL)->toBe('1.000,86');
-    expect($formattedUSD)->toBe('1,000.86');
-    expect($formattedEUR)->toBe('1.000,86');
-});
-
-it('MoneyFormatter should format currencies correctly without thousand separator', function () {
-    $formattedBRL = $this->formatter->format('1000.86', CurrencyFactory::get('BRL'), true, false);
-    $formattedUSD = $this->formatter->format('1000.86', CurrencyFactory::get('USD'), true, false);
-    $formattedEUR = $this->formatter->format('1000.86', CurrencyFactory::get('EUR'), true, false);
-
-    expect($formattedBRL)->toBe('R$ 1000,86');
-    expect($formattedUSD)->toBe('$ 1000.86');
-    expect($formattedEUR)->toBe('1000,86 €');
-});
-
-it('MoneyFormatter should format currencies correctly without symbol and thousand separator', function () {
-    $formattedBRL = $this->formatter->format('1000.86', CurrencyFactory::get('BRL'), false, false);
-    $formattedUSD = $this->formatter->format('1000.86', CurrencyFactory::get('USD'), false, false);
-    $formattedEUR = $this->formatter->format('1000.86', CurrencyFactory::get('EUR'), false, false);
-
-    expect($formattedBRL)->toBe('1000,86');
-    expect($formattedUSD)->toBe('1000.86');
-    expect($formattedEUR)->toBe('1000,86');
-});
-
-it('CurrencyFactory should register and create currencies correctly', function () {
-    $brl = $this->factory->create('BRL');
-    $usd = $this->factory->create('USD');
-    $eur = $this->factory->create('EUR');
-
-    expect($brl)->toBeInstanceOf(BRL::class);
-    expect($usd)->toBeInstanceOf(USD::class);
-    expect($eur)->toBeInstanceOf(EUR::class);
-
-    // Testando exceção para moeda não suportada
-    expect(fn () => $this->factory->create('GBP'))->toThrow(\InvalidArgumentException::class, 'Unsupported currency: GBP');
-});
-
-it('CurrencyFactory should return available currencies', function () {
-    $availableCurrencies = $this->factory->getAvailableCurrencies();
-
-    expect($availableCurrencies)->toBeArray();
-    expect($availableCurrencies)->toContain('BRL', 'USD', 'EUR');
-});
-
-it('should throw InvalidArgumentException for invalid amount format', function () {
-    expect(fn () => Money::of('invalid_amount'))->toThrow(\InvalidArgumentException::class);
-});
-
-it('should throw InvalidArgumentException for invalid value type in getValue', function () {
-    $money = Money::of(100.86);
-    expect(fn () => $money->add(new \stdClass))->toThrow(\InvalidArgumentException::class, 'Invalid value type');
+    expect($created)->toBeInstanceOf(CurrencyInterface::class)
+        ->and($created->getCode())->toBe('GBP')
+        ->and($created->getSymbol())->toBe('£')
+        ->and($created->getDecimalSeparator())->toBe('.')
+        ->and($created->getThousandsSeparator())->toBe(',')
+        ->and($created->getSymbolPosition())->toBe('before')
+        ->and($created->getFractionDigits())->toBe(2);
 });

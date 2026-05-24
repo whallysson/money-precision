@@ -15,17 +15,15 @@
     }
   ],
   "require": {
-    "php": "^8.1",
+    "php": ">=8.4",
     "ext-bcmath": "*"
   },
   "require-dev": {
-    "laravel/pint": "^1.18",
-    "pestphp/pest": "^1.23",
-    "pestphp/pest-plugin": "^1.1",
-    "phpstan/phpstan-strict-rules": "^1.6",
-    "rector/rector": "^1.2",
-    "symfony/var-dumper": "^5.4",
-    "thecodingmachine/phpstan-strict-rules": "^1.0"
+    "laravel/pint": "^1.29",
+    "pestphp/pest": "^4.0",
+    "phpstan/phpstan-strict-rules": "^2.0",
+    "rector/rector": "^2.0",
+    "symfony/var-dumper": "^7.4"
   },
   "autoload": {
     "psr-4": {
@@ -41,7 +39,7 @@
     "refacto": "rector",
     "lint": "pint",
     "test:refacto": "rector --dry-run",
-    "test:lint": "pint --test src",
+    "test:lint": "pint --test",
     "test:type:check": "phpstan analyse --ansi",
     "test:unit": "pest --colors=always",
     "test:type:coverage": "XDEBUG_MODE=coverage pest --coverage --min=100",
@@ -53,8 +51,6 @@
       "@test:unit"
     ]
   },
-  "minimum-stability": "dev",
-  "prefer-stable": true,
   "config": {
     "sort-packages": true,
     "preferred-install": "dist",

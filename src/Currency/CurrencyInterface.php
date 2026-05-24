@@ -20,4 +20,6 @@ interface CurrencyInterface
     public function getSymbolPosition(): string;
 
     public function getCode(): string;
+
+    public function getFractionDigits(): int;
 }

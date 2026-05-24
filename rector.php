@@ -10,7 +10,6 @@ return RectorConfig::configure()
         __DIR__.'/src',
     ])
     ->withSkip([
-        __DIR__.'/src/Plugins/Parallel/Paratest/WrapperRunner.php',
         ReturnNeverTypeRector::class,
     ])
     ->withPreparedSets(

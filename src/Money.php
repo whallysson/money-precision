@@ -5,211 +5,443 @@ declare(strict_types=1);
 namespace Whallysson\Money;
 
 use Whallysson\Money\Currency\CurrencyFactory;
+use Whallysson\Money\Currency\CurrencyInterface;
 use Whallysson\Money\Formatter\FormatterInterface;
 use Whallysson\Money\Money\MoneyFormatter;
 use Whallysson\Money\Money\MoneyInterface;
-use Whallysson\Money\Utils\ValueValidator;
 
 /**
  * Class Money
  *
  * @author Whallysson Avelino <whallysson.dev@gmail.com>
  */
-class Money implements MoneyInterface
+final readonly class Money implements MoneyInterface
 {
-    private ?string $value = null;
+    private function __construct(
+        private int $minorUnits,
+        private CurrencyInterface $currency
+    ) {}
 
-    private bool $isDecimal;
-
-    private int $scale = 8;
-
-    private readonly FormatterInterface $formatter;
-
-    public function __construct()
+    public static function fromCents(int $cents, string|CurrencyInterface $currency = 'BRL'): self
     {
-        ini_set('precision', '16');
-        bcscale($this->scale);
-        $this->formatter = new MoneyFormatter;
+        return new self($cents, self::resolveCurrency($currency));
     }
 
-    /**
-     * {@inheritDoc}
-     */
-    public function amount($value): MoneyInterface
+    public static function fromMinorUnits(int $minorUnits, string|CurrencyInterface $currency = 'BRL'): self
     {
-        if (is_string($value)) {
-            $value = str_replace(['R$', '$', '€', ' ', ','], ['', '', '', '', '.'], $value);
+        return self::fromCents($minorUnits, $currency);
+    }
+
+    public static function fromDecimal(string $amount, string|CurrencyInterface $currency = 'BRL'): self
+    {
+        $resolvedCurrency = self::resolveCurrency($currency);
+
+        return new self(
+            self::decimalToMinorUnits($amount, $resolvedCurrency->getFractionDigits()),
+            $resolvedCurrency
+        );
+    }
+
+    public static function parse(string $amount, string|CurrencyInterface $currency = 'BRL'): self
+    {
+        $resolvedCurrency = self::resolveCurrency($currency);
+        $normalizedAmount = preg_replace('/\s+/u', '', trim($amount));
+
+        if ($normalizedAmount === null || $normalizedAmount === '') {
+            throw new \InvalidArgumentException('Invalid money format');
         }
 
-        if (! is_numeric($value)) {
-            throw new \InvalidArgumentException('Invalid number format');
+        $symbol = $resolvedCurrency->getSymbol();
+
+        if ($symbol !== '') {
+            $normalizedAmount = str_replace($symbol, '', $normalizedAmount);
         }
 
-        $value = (string) $value;
-        $this->isDecimal = (str_contains($value, '.'));
-        $this->value = $value;
+        $thousandsSeparator = $resolvedCurrency->getThousandsSeparator();
 
-        return $this;
+        if ($thousandsSeparator !== '') {
+            $normalizedAmount = str_replace($thousandsSeparator, '', $normalizedAmount);
+        }
+
+        $decimalSeparator = $resolvedCurrency->getDecimalSeparator();
+
+        if ($decimalSeparator !== '.') {
+            $normalizedAmount = str_replace($decimalSeparator, '.', $normalizedAmount);
+        }
+
+        return self::fromDecimal($normalizedAmount, $resolvedCurrency);
     }
 
     public function int(): int
     {
-        if (! $this->isDecimal) {
-            return (int) $this->value;
-        }
+        return $this->minorUnits;
+    }
 
-        $parts = explode('.', (string) $this->value);
-        $integers = $parts[0];
-        $decimals = str_pad(substr($parts[1].'00', 0, 2), 2, '0');
+    public function toCents(): int
+    {
+        return $this->minorUnits;
+    }
 
-        return (int) ($integers.$decimals);
+    public function toMinorUnits(): int
+    {
+        return $this->minorUnits;
     }
 
     public function decimal(int $precision = 2): string
     {
-        if ($this->isDecimal) {
-            $result = bcscale($precision) !== 0 ? bcdiv((string) $this->value, '1', $precision) : $this->value;
+        return $this->toDecimal($precision);
+    }
 
-            return $result ?? '0';
+    public function toDecimal(?int $precision = null): string
+    {
+        $fractionDigits = $this->currency->getFractionDigits();
+        $precision ??= $fractionDigits;
+
+        if ($precision < 0) {
+            throw new \InvalidArgumentException('Precision must be greater than or equal to zero');
         }
 
-        $value = str_pad((string) $this->value, 3, '0', STR_PAD_LEFT);
-        $decimals = substr($value, -2);
-        $integers = substr($value, 0, -2);
-        $result = $integers.'.'.$decimals;
+        if ($precision < $fractionDigits) {
+            throw new \InvalidArgumentException('Precision cannot be lower than currency fraction digits');
+        }
 
-        return bcscale($precision) !== 0 ? bcdiv($result, '1', $precision) : $result;
+        return $this->minorUnitsToDecimal($this->minorUnits, $fractionDigits, $precision);
     }
 
-    private function calculate(string $operation, float|int|string|MoneyInterface $value): self
+    public function currency(): CurrencyInterface
     {
-        $value1 = $this->decimal();
-        $value2 = $this->getValue($value);
-
-        $result = match ($operation) {
-            'add' => bcadd($value1, $value2, $this->scale),
-            'sub' => bcsub($value1, $value2, $this->scale),
-            'mul' => bcmul($value1, $value2, $this->scale),
-            'div' => bcdiv($value1, $value2, $this->scale),
-            default => throw new \InvalidArgumentException('Invalid operation')
-        };
-
-        $this->value = $result;
-        $this->isDecimal = true;
-
-        return $this;
+        return $this->currency;
     }
 
-    /**
-     * {@inheritDoc}
-     */
-    public function add($value): MoneyInterface
+    public function add(MoneyInterface $money): self
     {
-        ValueValidator::validate($value);
+        $this->assertSameCurrency($money);
 
-        return $this->calculate('add', $value);
+        return new self(
+            self::integerStringToInt(bcadd((string) $this->minorUnits, (string) $money->toCents(), 0)),
+            $this->currency
+        );
     }
 
-    /**
-     * {@inheritDoc}
-     */
-    public function sub($value): MoneyInterface
+    public function sub(MoneyInterface $money): self
     {
-        ValueValidator::validate($value);
+        $this->assertSameCurrency($money);
 
-        return $this->calculate('sub', $value);
+        return new self(
+            self::integerStringToInt(bcsub((string) $this->minorUnits, (string) $money->toCents(), 0)),
+            $this->currency
+        );
     }
 
-    /**
-     * {@inheritDoc}
-     */
-    public function mul($value): MoneyInterface
+    public function mul(int|string $multiplier, RoundingMode $roundingMode): self
     {
-        ValueValidator::validate($value);
+        $ratio = $this->decimalRatio($multiplier, 'Multiplier');
+        $numerator = bcmul((string) $this->minorUnits, (string) $ratio['numerator'], 0);
 
-        return $this->calculate('mul', $value);
+        return new self(
+            $this->divideAndRound($numerator, (string) $ratio['denominator'], $roundingMode),
+            $this->currency
+        );
     }
 
-    /**
-     * {@inheritDoc}
-     */
-    public function div($value): MoneyInterface
+    public function div(int|string $divisor, RoundingMode $roundingMode): self
     {
-        ValueValidator::validate($value);
+        $ratio = $this->decimalRatio($divisor, 'Divisor');
 
-        return $this->calculate('div', $value);
+        if ($ratio['numerator'] === 0) {
+            throw new \InvalidArgumentException('Division by zero');
+        }
+
+        $numerator = bcmul((string) $this->minorUnits, (string) $ratio['denominator'], 0);
+
+        return new self(
+            $this->divideAndRound($numerator, (string) $ratio['numerator'], $roundingMode),
+            $this->currency
+        );
     }
 
-    public function compare(float|int|string|MoneyInterface $value): int
+    public function compare(MoneyInterface $money): int
     {
-        $value1 = $this->decimal();
-        $value2 = $this->getValue($value);
+        $this->assertSameCurrency($money);
 
-        return bccomp($value1, $value2, 2);
+        return bccomp((string) $this->minorUnits, (string) $money->toCents(), 0);
     }
 
-    /**
-     * {@inheritDoc}
-     */
-    public function equals($value): bool
+    public function equals(MoneyInterface $money): bool
     {
-        return $this->compare($value) === 0;
+        return $this->compare($money) === 0;
     }
 
-    /**
-     * {@inheritDoc}
-     */
-    public function greaterThan($value): bool
+    public function greaterThan(MoneyInterface $money): bool
     {
-        return $this->compare($value) === 1;
+        return $this->compare($money) === 1;
     }
 
-    /**
-     * {@inheritDoc}
-     */
-    public function lessThan($value): bool
+    public function lessThan(MoneyInterface $money): bool
     {
-        return $this->compare($value) === -1;
+        return $this->compare($money) === -1;
+    }
+
+    public function isDecimal(): bool
+    {
+        return true;
     }
 
     public function format(
-        string $currency = 'BRL',
         bool $showSymbol = true,
         bool $showThousandsSeparator = true
     ): string {
-        $currency = CurrencyFactory::get($currency);
-
-        return $this->formatter->format(
-            $this->decimal(),
-            $currency,
+        return $this->formatter()->format(
+            $this->minorUnits,
+            $this->currency,
             $showSymbol,
             $showThousandsSeparator
         );
     }
 
-    /**
-     * @param  int|float|string  $value
-     */
-    public static function of($value): MoneyInterface
+    private static function resolveCurrency(string|CurrencyInterface $currency): CurrencyInterface
     {
-        return (new self)->amount($value);
+        return $currency instanceof CurrencyInterface ? $currency : CurrencyFactory::get($currency);
     }
 
-    public function isDecimal(): bool
+    private static function decimalToMinorUnits(string $amount, int $fractionDigits): int
     {
-        return $this->isDecimal;
-    }
+        $amount = trim($amount);
 
-    private function getValue(float|int|string|MoneyInterface $value): string
-    {
-        ValueValidator::validate($value);
-
-        if ($value instanceof MoneyInterface) {
-            return $value->isDecimal() ? $value->decimal() : (string) $value->int();
+        if (preg_match('/^-?\d+(?:\.\d+)?$/', $amount) !== 1) {
+            throw new \InvalidArgumentException('Invalid decimal money format');
         }
 
-        $obj = (new self)->amount($value);
+        $isNegative = str_starts_with($amount, '-');
+        $unsignedAmount = $isNegative ? substr($amount, 1) : $amount;
+        $parts = explode('.', $unsignedAmount, 2);
+        $integerPart = $parts[0];
+        $fractionPart = $parts[1] ?? '';
 
-        return $obj->isDecimal() ? $obj->decimal() : (string) $obj->int();
+        if (strlen($fractionPart) > $fractionDigits) {
+            throw new \InvalidArgumentException('Decimal money format exceeds currency fraction digits');
+        }
+
+        $fractionPart = str_pad($fractionPart, $fractionDigits, '0');
+
+        return self::integerStringToInt(($isNegative ? '-' : '').$integerPart.$fractionPart);
+    }
+
+    private function minorUnitsToDecimal(int $minorUnits, int $fractionDigits, int $precision): string
+    {
+        $negative = $minorUnits < 0;
+        $digits = ltrim((string) $minorUnits, '-');
+
+        if ($fractionDigits > 0) {
+            $digits = str_pad($digits, $fractionDigits + 1, '0', STR_PAD_LEFT);
+            $integerPart = substr($digits, 0, -$fractionDigits);
+            $fractionPart = substr($digits, -$fractionDigits);
+        } else {
+            $integerPart = $digits;
+            $fractionPart = '';
+        }
+
+        $fractionPart = str_pad($fractionPart, $precision, '0');
+        $sign = $negative ? '-' : '';
+
+        if ($precision === 0) {
+            return $sign.$integerPart;
+        }
+
+        return $sign.$integerPart.'.'.$fractionPart;
+    }
+
+    /**
+     * @return array{numerator: int, denominator: int}
+     */
+    private function decimalRatio(int|string $value, string $label): array
+    {
+        $value = is_int($value) ? (string) $value : trim($value);
+
+        if (preg_match('/^-?\d+(?:\.\d+)?$/', $value) !== 1) {
+            throw new \InvalidArgumentException($label.' must be an integer or decimal string');
+        }
+
+        $isNegative = str_starts_with($value, '-');
+        $unsignedValue = $isNegative ? substr($value, 1) : $value;
+        $parts = explode('.', $unsignedValue, 2);
+        $integerPart = $parts[0];
+        $fractionPart = $parts[1] ?? '';
+        $digits = ltrim($integerPart.$fractionPart, '0');
+        $numerator = $digits === '' ? '0' : ($isNegative ? '-' : '').$digits;
+        $denominator = '1'.str_repeat('0', strlen($fractionPart));
+
+        return [
+            'numerator' => self::integerStringToInt($numerator),
+            'denominator' => self::integerStringToInt($denominator),
+        ];
+    }
+
+    private function divideAndRound(string $numerator, string $denominator, RoundingMode $roundingMode): int
+    {
+        $numerator = self::normalizeIntegerString($numerator);
+        $denominator = self::normalizeIntegerString($denominator);
+
+        if ($denominator === '0') {
+            throw new \InvalidArgumentException('Division by zero');
+        }
+
+        $isNegative = str_starts_with($numerator, '-') !== str_starts_with($denominator, '-');
+        $absoluteNumerator = $this->absoluteIntegerString($numerator);
+        $absoluteDenominator = $this->absoluteIntegerString($denominator);
+        $quotient = self::normalizeIntegerString(bcdiv($absoluteNumerator, $absoluteDenominator, 0));
+        $remainder = self::normalizeIntegerString(bcmod($absoluteNumerator, $absoluteDenominator));
+        $hasRemainder = $remainder !== '0';
+
+        $shouldIncrement = match ($roundingMode) {
+            RoundingMode::TowardsZero => false,
+            RoundingMode::AwayFromZero => $hasRemainder,
+            RoundingMode::PositiveInfinity => ! $isNegative && $hasRemainder,
+            RoundingMode::NegativeInfinity => $isNegative && $hasRemainder,
+            RoundingMode::HalfAwayFromZero => $this->compareDoubleRemainder($remainder, $absoluteDenominator) >= 0,
+            RoundingMode::HalfTowardsZero => $this->compareDoubleRemainder($remainder, $absoluteDenominator) > 0,
+            RoundingMode::HalfEven => $this->shouldRoundHalfEven($quotient, $remainder, $absoluteDenominator),
+        };
+
+        $rounded = $shouldIncrement ? $this->incrementUnsignedIntegerString($quotient) : $quotient;
+
+        if ($rounded === '0') {
+            return 0;
+        }
+
+        return self::integerStringToInt(($isNegative ? '-' : '').$rounded);
+    }
+
+    private function compareDoubleRemainder(string $remainder, string $denominator): int
+    {
+        return self::compareUnsignedIntegerStrings(
+            $this->doubleUnsignedIntegerString($remainder),
+            $denominator
+        );
+    }
+
+    private function shouldRoundHalfEven(string $quotient, string $remainder, string $denominator): bool
+    {
+        $comparison = $this->compareDoubleRemainder($remainder, $denominator);
+
+        if ($comparison > 0) {
+            return true;
+        }
+
+        if ($comparison < 0) {
+            return false;
+        }
+
+        return ((int) substr($quotient, -1)) % 2 === 1;
+    }
+
+    private function assertSameCurrency(MoneyInterface $money): void
+    {
+        if ($this->currency->getCode() !== $money->currency()->getCode()) {
+            throw new \InvalidArgumentException(sprintf(
+                'Cannot operate with different currencies: %s and %s',
+                $this->currency->getCode(),
+                $money->currency()->getCode()
+            ));
+        }
+    }
+
+    private function formatter(): FormatterInterface
+    {
+        return new MoneyFormatter;
+    }
+
+    private function absoluteIntegerString(string $value): string
+    {
+        return str_starts_with($value, '-') ? substr($value, 1) : $value;
+    }
+
+    private static function normalizeIntegerString(string $value): string
+    {
+        $value = trim($value);
+
+        if (preg_match('/^-?\d+$/', $value) !== 1) {
+            throw new \InvalidArgumentException('Invalid integer money format');
+        }
+
+        $isNegative = str_starts_with($value, '-');
+        $digits = ltrim($value, '+-');
+        $digits = ltrim($digits, '0');
+
+        if ($digits === '') {
+            return '0';
+        }
+
+        return ($isNegative ? '-' : '').$digits;
+    }
+
+    private function doubleUnsignedIntegerString(string $value): string
+    {
+        $value = ltrim($value, '0');
+
+        if ($value === '') {
+            return '0';
+        }
+
+        $result = '';
+        $carry = 0;
+
+        for ($index = strlen($value) - 1; $index >= 0; $index--) {
+            $digit = ((int) $value[$index]) * 2 + $carry;
+            $result = ($digit % 10).$result;
+            $carry = intdiv($digit, 10);
+        }
+
+        return $carry > 0 ? $carry.$result : $result;
+    }
+
+    private function incrementUnsignedIntegerString(string $value): string
+    {
+        $value = ltrim($value, '0');
+
+        if ($value === '') {
+            return '1';
+        }
+
+        $result = '';
+        $carry = 1;
+
+        for ($index = strlen($value) - 1; $index >= 0; $index--) {
+            $digit = ((int) $value[$index]) + $carry;
+            $result = ($digit % 10).$result;
+            $carry = intdiv($digit, 10);
+        }
+
+        return $carry > 0 ? $carry.$result : $result;
+    }
+
+    private static function integerStringToInt(string $value): int
+    {
+        $normalizedValue = self::normalizeIntegerString($value);
+        $digits = ltrim($normalizedValue, '-');
+
+        if (self::compareUnsignedIntegerStrings($digits, (string) PHP_INT_MAX) > 0) {
+            throw new \InvalidArgumentException('Money amount exceeds PHP integer range');
+        }
+
+        return (int) $normalizedValue;
+    }
+
+    private static function compareUnsignedIntegerStrings(string $left, string $right): int
+    {
+        $left = ltrim($left, '0');
+        $right = ltrim($right, '0');
+        $left = $left === '' ? '0' : $left;
+        $right = $right === '' ? '0' : $right;
+
+        if (strlen($left) > strlen($right)) {
+            return 1;
+        }
+
+        if (strlen($left) < strlen($right)) {
+            return -1;
+        }
+
+        return $left <=> $right;
     }
 }
