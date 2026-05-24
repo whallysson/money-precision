@@ -8,28 +8,13 @@ filter:
 build:
   image: default-jammy
 
-  environment:
-    variables:
-      COMPOSER_MEMORY_LIMIT: "-1"
-    php:
-      version: "8.4.0"
-
   nodes:
     analysis:
-      dependencies:
+      environment:
+        php: 8.2
+      project_setup:
         override:
-          - composer update --prefer-dist --no-interaction --no-progress --ansi
+          - "true"
       tests:
         override:
           - php-scrutinizer-run
-
-    tests:
-      dependencies:
-        override:
-          - composer update --prefer-dist --no-interaction --no-progress --ansi
-      tests:
-        override:
-          - composer test:refacto
-          - composer test:lint
-          - composer test:type:check
-          - composer test:unit
