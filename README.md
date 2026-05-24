@@ -5,90 +5,86 @@
 [![PHP from Packagist](https://img.shields.io/packagist/php-v/whallysson/money-precision.svg?style=flat-square)](https://packagist.org/packages/whallysson/money-precision)
 [![Latest Version](https://img.shields.io/github/release/whallysson/money-precision.svg?style=flat-square)](https://github.com/whallysson/money-precision/releases)
 [![Software License](https://img.shields.io/badge/license-MIT-brightgreen.svg?style=flat-square)](LICENSE)
-[![Build](https://img.shields.io/scrutinizer/build/g/whallysson/money-precision.svg?style=flat-square)](https://scrutinizer-ci.com/g/whallysson/money-precision)
-[![Quality Score](https://img.shields.io/scrutinizer/g/whallysson/money-precision.svg?style=flat-square)](https://scrutinizer-ci.com/g/whallysson/money-precision)
 [![Total Downloads](https://img.shields.io/packagist/dt/whallysson/money-precision.svg?style=flat-square)](https://packagist.org/packages/whallysson/money-precision)
 
-**MoneyPrecision** is a PHP library designed to handle monetary values with precision, ensuring accurate conversions, formatting, and arithmetic operations. With support for multiple currencies, it is ideal for applications that demand reliability in financial calculations.
+**MoneyPrecision** is a PHP library for precise monetary values, explicit minor-unit conversion, currency-aware arithmetic, and locale-safe formatting.
 
----
+## Requirements
 
-## 🚀 Features
+- PHP `>=8.4`
+- `ext-bcmath`
 
-- Conversions between integer and decimal values ​​while maintaining precision.
-- Arithmetic operations (addition, subtraction, multiplication and division) with high accuracy.
-- Comparisons between monetary values.
-- Support for multiple currencies with custom formatting.
-- Intuitive and extensible API.
-
-- **Precise Conversion**:
-    - Integer to Decimal and vice-versa.
-    - Handles trailing zeros (e.g., `5660 -> 56.60`).
-
-- **Arithmetic Operations**:
-    - Addition, subtraction, multiplication, and division.
-    - Guaranteed accuracy with `bcmath`.
-
-- **Currency Support**:
-    - Easily extendable for multiple currencies.
-    - Includes BRL, USD, and EUR by default.
-
-- **Comparison**:
-    - Compare monetary values using `equals`, `greaterThan`, and `lessThan`.
-
-- **Customizable Formatting**:
-    - Flexible formatting with symbols, separators, and positioning.
-
----
-
-## 🛠 Installation
-
-Install **MoneyPrecision** with [Composer](https://getcomposer.org/):
-
+## Installation
 
 ```bash
-"whallysson/money-precision": "^1.0"
+composer require whallysson/money-precision:^3.0
 ```
 
-or run
+## Core Rules
 
-```bash
-composer require whallysson/money-precision
-```
+- Use explicit constructors: `fromCents()`, `fromDecimal()`, and `parse()`.
+- Do not pass floats for monetary values.
+- Values are stored internally as integer minor units.
+- Money objects are immutable: arithmetic returns a new instance.
+- Each value carries a currency, and arithmetic between different currencies throws.
+- Multiplication and division require an explicit `RoundingMode`.
+- Parsing and formatting are separate from calculation.
 
-## 📖 Documentation
+## Usage
 
-For detailed information and examples, visit the [documentation](https://github.com/whallysson/money-precision/blob/main/README.md).
-
-
-## 📚 Usage
-### Basic Conversions
+### Explicit Conversion
 
 ```php
 <?php
 
 use Whallysson\Money\Money;
 
-echo Money::of(10086)->decimal() . PHP_EOL; // Output: 100.86
-echo Money::of(5660)->decimal() . PHP_EOL; // Output: 56.60
-echo Money::of(100.86)->int() . PHP_EOL; // Output: 10086
-echo Money::of('56.60')->int() . PHP_EOL; // Output: 5660
+echo Money::fromCents(5660)->toDecimal() . PHP_EOL; // 56.60
+echo Money::fromDecimal('56.60')->toCents() . PHP_EOL; // 5660
+
+echo Money::fromCents(56)->toDecimal() . PHP_EOL; // 0.56
+echo Money::fromDecimal('56')->toCents() . PHP_EOL; // 5600
 ```
 
-### Arithmetic Operations
+### Parsing Formatted Values
 
 ```php
 <?php
 
 use Whallysson\Money\Money;
 
-$money1 = Money::of(100.86);
-$money2 = Money::of(56.60);
+echo Money::parse('R$ 1.234,56')->toCents() . PHP_EOL; // 123456
+echo Money::parse('$ 1,234.56', 'USD')->toDecimal() . PHP_EOL; // 1234.56
+echo Money::parse('1.234,56 €', 'EUR')->toCents() . PHP_EOL; // 123456
+```
 
-echo $money1->add($money2)->decimal() . PHP_EOL; // Output: 157.46
-echo $money1->sub($money2)->decimal() . PHP_EOL; // Output: 44.26
-echo $money1->mul(2)->decimal() . PHP_EOL; // Output: 201.72
-echo $money1->div(2)->decimal() . PHP_EOL; // Output: 50.43
+### Arithmetic
+
+```php
+<?php
+
+use Whallysson\Money\Money;
+
+$money = Money::fromDecimal('100.86');
+$fee = Money::fromCents(5600);
+
+echo $money->add($fee)->toDecimal() . PHP_EOL; // 156.86
+echo $money->sub(Money::fromDecimal('0.86'))->toDecimal() . PHP_EOL; // 100.00
+echo $money->toDecimal() . PHP_EOL; // 100.86
+```
+
+### Multiplication And Division
+
+```php
+<?php
+
+use Whallysson\Money\Money;
+use Whallysson\Money\RoundingMode;
+
+$money = Money::fromDecimal('100.86');
+
+echo $money->mul('2', RoundingMode::HalfAwayFromZero)->toDecimal() . PHP_EOL; // 201.72
+echo $money->div('2', RoundingMode::HalfAwayFromZero)->toDecimal() . PHP_EOL; // 50.43
 ```
 
 ### Comparisons
@@ -98,13 +94,13 @@ echo $money1->div(2)->decimal() . PHP_EOL; // Output: 50.43
 
 use Whallysson\Money\Money;
 
-$money1 = Money::of(100.86);
-$money2 = Money::of(56.60);
+$money = Money::fromDecimal('100.86');
+$other = Money::fromDecimal('56.60');
 
 var_dump([
-    'equals' => $money1->equals($money2), // false
-    'greaterThan' => $money1->greaterThan($money2), // true
-    'lessThan' => $money1->lessThan($money2), // false
+    'equals' => $money->equals($other), // false
+    'greaterThan' => $money->greaterThan($other), // true
+    'lessThan' => $money->lessThan($other), // false
 ]);
 ```
 
@@ -115,14 +111,10 @@ var_dump([
 
 use Whallysson\Money\Money;
 
-echo Money::of(100.86)->format() . PHP_EOL; // Output: R$ 100,86
-echo Money::of(56.60)->format('USD') . PHP_EOL; // Output: $ 56.60
-echo Money::of(356.78->format('EUR') . PHP_EOL; // Output: 356,78 €
+echo Money::fromDecimal('100.86')->format() . PHP_EOL; // R$ 100,86
+echo Money::fromDecimal('56.60', 'USD')->format() . PHP_EOL; // $ 56.60
+echo Money::fromDecimal('356.78', 'EUR')->format() . PHP_EOL; // 356,78 €
 ```
-
-
-
-
 
 ## Contributing
 
@@ -130,18 +122,16 @@ Please see [CONTRIBUTING](https://github.com/whallysson/money-precision/blob/mas
 
 ## Support
 
-###### Security: If you discover any security related issues, please email whallysson.dev@gmail.com instead of using the issue tracker.
+Security: If you discover any security related issues, please email whallysson.dev@gmail.com instead of using the issue tracker.
 
 Se você descobrir algum problema relacionado à segurança, envie um e-mail para whallysson.dev@gmail.com em vez de usar o rastreador de problemas.
-
-Thank you
 
 ## Credits
 
 - [Whallysson Avelino](https://github.com/whallysson) (Developer)
 - [Whallysson](https://github.com/whallysson) (Team)
-- [All Contributors](https://github.com/whallysson/money-precision/contributors) (This Rock)
+- [All Contributors](https://github.com/whallysson/money-precision/contributors)
 
-## 📝 License
+## License
 
 The MIT License (MIT). Please see [License File](https://github.com/whallysson/money-precision/blob/master/LICENSE) for more information.

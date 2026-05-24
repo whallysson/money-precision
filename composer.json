@@ -15,15 +15,47 @@
     }
   ],
   "require": {
-    "php": ">=7.4",
+    "php": ">=8.4",
     "ext-bcmath": "*"
   },
+  "require-dev": {
+    "laravel/pint": "^1.29",
+    "pestphp/pest": "^4.0",
+    "phpstan/phpstan-strict-rules": "^2.0",
+    "rector/rector": "^2.0",
+    "symfony/var-dumper": "^7.4"
+  },
   "autoload": {
-    "files": [
-      "src/helpers.php"
-    ],
     "psr-4": {
       "Whallysson\\Money\\": "src"
+    }
+  },
+  "autoload-dev": {
+    "psr-4": {
+      "Tests\\": "tests/"
+    }
+  },
+  "scripts": {
+    "refacto": "rector",
+    "lint": "pint",
+    "test:refacto": "rector --dry-run",
+    "test:lint": "pint --test",
+    "test:type:check": "phpstan analyse --ansi",
+    "test:unit": "pest --colors=always",
+    "test:type:coverage": "XDEBUG_MODE=coverage pest --coverage --min=100",
+    "test": [
+      "@test:refacto",
+      "@test:lint",
+      "@test:type:check",
+      "@test:type:coverage",
+      "@test:unit"
+    ]
+  },
+  "config": {
+    "sort-packages": true,
+    "preferred-install": "dist",
+    "allow-plugins": {
+      "pestphp/pest-plugin": true
     }
   }
 }

@@ -10,7 +10,6 @@ use Whallysson\Money\Currency\AbstractCurrency;
  * Class BRL
  *
  * @author Whallysson Avelino <whallysson.dev@gmail.com>
- * @package Whallysson\Money\Currency\Coins
  */
 class BRL extends AbstractCurrency
 {
@@ -20,8 +19,7 @@ class BRL extends AbstractCurrency
             'BRL',
             'R$',
             ',',
-            '.',
-            'before'
+            '.'
         );
     }
 }
