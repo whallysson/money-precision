@@ -15,11 +15,11 @@ use Whallysson\Money\Money\MoneyInterface;
  *
  * @author Whallysson Avelino <whallysson.dev@gmail.com>
  */
-final readonly class Money implements MoneyInterface
+final class Money implements MoneyInterface
 {
     private function __construct(
-        private int $minorUnits,
-        private CurrencyInterface $currency
+        private readonly int $minorUnits,
+        private readonly CurrencyInterface $currency
     ) {}
 
     public static function fromCents(int $cents, string|CurrencyInterface $currency = 'BRL'): self
