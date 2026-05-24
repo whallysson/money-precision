@@ -26,14 +26,16 @@ class MoneyFormatter implements FormatterInterface
             $showThousandsSeparator
         );
 
-        if (! $showSymbol) {
+        $symbol = $currency->getSymbol();
+
+        if (! $showSymbol || $symbol === '') {
             return $formattedNumber;
         }
 
         return match ($currency->getSymbolPosition()) {
-            'before' => sprintf('%s %s', $currency->getSymbol(), $formattedNumber),
-            'after' => sprintf('%s %s', $formattedNumber, $currency->getSymbol()),
-            default => sprintf('%s %s', $currency->getSymbol(), $formattedNumber)
+            'before' => sprintf('%s %s', $symbol, $formattedNumber),
+            'after' => sprintf('%s %s', $formattedNumber, $symbol),
+            default => sprintf('%s %s', $symbol, $formattedNumber)
         };
     }
 

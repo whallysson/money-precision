@@ -22,12 +22,14 @@ composer require whallysson/money-precision:^3.0
 
 ## Core Rules
 
-- Use explicit constructors: `fromCents()`, `fromDecimal()`, and `parse()`.
+- Use explicit constructors: `fromMinorUnits()`, `fromCents()`, `fromDecimal()`, and `parse()`.
 - Do not pass floats for monetary values.
 - Values are stored internally as integer minor units.
+- Prefer `fromMinorUnits()` when code is currency-agnostic; `fromCents()` is a convenience alias for cent-based currencies.
 - Money objects are immutable: arithmetic returns a new instance.
 - Each value carries a currency, and arithmetic between different currencies throws.
 - Multiplication and division require an explicit `RoundingMode`.
+- `parse()` validates localized grouping strictly. Use `parseLenient()` only for trusted legacy input.
 - Parsing and formatting are separate from calculation.
 
 ## Usage
@@ -40,6 +42,7 @@ composer require whallysson/money-precision:^3.0
 use Whallysson\Money\Money;
 
 echo Money::fromCents(5660)->toDecimal() . PHP_EOL; // 56.60
+echo Money::fromMinorUnits(5660)->toDecimal() . PHP_EOL; // 56.60
 echo Money::fromDecimal('56.60')->toCents() . PHP_EOL; // 5660
 
 echo Money::fromCents(56)->toDecimal() . PHP_EOL; // 0.56
@@ -56,6 +59,9 @@ use Whallysson\Money\Money;
 echo Money::parse('R$ 1.234,56')->toCents() . PHP_EOL; // 123456
 echo Money::parse('$ 1,234.56', 'USD')->toDecimal() . PHP_EOL; // 1234.56
 echo Money::parse('1.234,56 €', 'EUR')->toCents() . PHP_EOL; // 123456
+
+Money::parse('R$ 1.23.4,56'); // throws InvalidArgumentException
+echo Money::parseLenient('R$ 1.23.4,56')->toDecimal() . PHP_EOL; // 1234.56
 ```
 
 ### Arithmetic

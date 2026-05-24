@@ -24,12 +24,12 @@ final class Money implements MoneyInterface
 
     public static function fromCents(int $cents, string|CurrencyInterface $currency = 'BRL'): self
     {
-        return new self($cents, self::resolveCurrency($currency));
+        return self::fromMinorUnits($cents, $currency);
     }
 
     public static function fromMinorUnits(int $minorUnits, string|CurrencyInterface $currency = 'BRL'): self
     {
-        return self::fromCents($minorUnits, $currency);
+        return new self($minorUnits, self::resolveCurrency($currency));
     }
 
     public static function fromDecimal(string $amount, string|CurrencyInterface $currency = 'BRL'): self
@@ -51,25 +51,110 @@ final class Money implements MoneyInterface
             throw new \InvalidArgumentException('Invalid money format');
         }
 
+        $normalizedAmount = self::stripCurrencySymbol($normalizedAmount, $resolvedCurrency->getSymbol());
+        self::assertValidLocalizedNumber($normalizedAmount, $resolvedCurrency);
+        $normalizedAmount = self::normalizeLocalizedNumber($normalizedAmount, $resolvedCurrency);
+
+        return self::fromDecimal($normalizedAmount, $resolvedCurrency);
+    }
+
+    public static function parseLenient(string $amount, string|CurrencyInterface $currency = 'BRL'): self
+    {
+        $resolvedCurrency = self::resolveCurrency($currency);
+        $normalizedAmount = preg_replace('/\s+/u', '', trim($amount));
+
+        if ($normalizedAmount === null || $normalizedAmount === '') {
+            throw new \InvalidArgumentException('Invalid money format');
+        }
+
         $symbol = $resolvedCurrency->getSymbol();
 
         if ($symbol !== '') {
             $normalizedAmount = str_replace($symbol, '', $normalizedAmount);
         }
 
-        $thousandsSeparator = $resolvedCurrency->getThousandsSeparator();
-
-        if ($thousandsSeparator !== '') {
-            $normalizedAmount = str_replace($thousandsSeparator, '', $normalizedAmount);
-        }
-
-        $decimalSeparator = $resolvedCurrency->getDecimalSeparator();
-
-        if ($decimalSeparator !== '.') {
-            $normalizedAmount = str_replace($decimalSeparator, '.', $normalizedAmount);
-        }
+        $normalizedAmount = self::normalizeLocalizedNumber($normalizedAmount, $resolvedCurrency);
 
         return self::fromDecimal($normalizedAmount, $resolvedCurrency);
+    }
+
+    private static function normalizeLocalizedNumber(string $amount, CurrencyInterface $currency): string
+    {
+        $thousandsSeparator = $currency->getThousandsSeparator();
+
+        if ($thousandsSeparator !== '') {
+            $amount = str_replace($thousandsSeparator, '', $amount);
+        }
+
+        $decimalSeparator = $currency->getDecimalSeparator();
+
+        if ($decimalSeparator !== '.') {
+            return str_replace($decimalSeparator, '.', $amount);
+        }
+
+        return $amount;
+    }
+
+    private static function stripCurrencySymbol(string $amount, string $symbol): string
+    {
+        if ($symbol === '') {
+            return $amount;
+        }
+
+        if (substr_count($amount, $symbol) > 1) {
+            throw new \InvalidArgumentException('Invalid money format');
+        }
+
+        if (! str_contains($amount, $symbol)) {
+            return $amount;
+        }
+
+        if (str_starts_with($amount, $symbol)) {
+            return substr($amount, strlen($symbol));
+        }
+
+        if (str_starts_with($amount, '-'.$symbol)) {
+            return '-'.substr($amount, strlen('-'.$symbol));
+        }
+
+        if (str_ends_with($amount, $symbol)) {
+            return substr($amount, 0, -strlen($symbol));
+        }
+
+        throw new \InvalidArgumentException('Invalid money format');
+    }
+
+    private static function assertValidLocalizedNumber(string $amount, CurrencyInterface $currency): void
+    {
+        $integerPattern = self::localizedIntegerPattern($currency->getThousandsSeparator());
+        $fractionPattern = self::localizedFractionPattern(
+            $currency->getDecimalSeparator(),
+            $currency->getFractionDigits()
+        );
+
+        if (preg_match('/^-?'.$integerPattern.$fractionPattern.'$/u', $amount) !== 1) {
+            throw new \InvalidArgumentException('Invalid money format');
+        }
+    }
+
+    private static function localizedIntegerPattern(string $thousandsSeparator): string
+    {
+        if ($thousandsSeparator === '') {
+            return '\d+';
+        }
+
+        $separator = preg_quote($thousandsSeparator, '/');
+
+        return '(?:\d+|\d{1,3}(?:'.$separator.'\d{3})+)';
+    }
+
+    private static function localizedFractionPattern(string $decimalSeparator, int $fractionDigits): string
+    {
+        if ($fractionDigits === 0) {
+            return '';
+        }
+
+        return '(?:'.preg_quote($decimalSeparator, '/').'\d{1,'.$fractionDigits.'})?';
     }
 
     public function int(): int

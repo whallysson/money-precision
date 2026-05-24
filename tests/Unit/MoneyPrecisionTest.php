@@ -36,7 +36,8 @@ it('renders currencies without fraction digits', function () {
     };
 
     expect(Money::fromDecimal('1234', $currency)->toDecimal())->toBe('1234')
-        ->and(Money::fromCents(-1234, $currency)->toDecimal(0))->toBe('-1234');
+        ->and(Money::fromMinorUnits(-1234, $currency)->toDecimal(0))->toBe('-1234')
+        ->and(Money::parse('¥ 1,234', $currency)->toMinorUnits())->toBe(1234);
 });
 
 it('rejects ambiguous or lossy decimal inputs', function () {
@@ -50,10 +51,26 @@ it('rejects ambiguous or lossy decimal inputs', function () {
 
 it('parses formatted money using the selected currency locale', function () {
     expect(Money::parse('R$ 1.234,56')->toCents())->toBe(123456)
+        ->and(Money::parse('1234,56')->toCents())->toBe(123456)
         ->and(Money::parse('$ 1,234.56', 'USD')->toCents())->toBe(123456)
         ->and(Money::parse('1.234,56 €', 'EUR')->toCents())->toBe(123456)
         ->and(Money::parse('R$ -1.234,56')->toDecimal())->toBe('-1234.56')
+        ->and(Money::parse('-R$ 1.234,56')->toDecimal())->toBe('-1234.56')
         ->and(fn () => Money::parse(''))->toThrow(InvalidArgumentException::class, 'Invalid money format');
+});
+
+it('rejects malformed localized parsing by default', function () {
+    expect(fn () => Money::parse('R$ 1.23.4,56'))->toThrow(InvalidArgumentException::class, 'Invalid money format')
+        ->and(fn () => Money::parse('R$ 12.34,56'))->toThrow(InvalidArgumentException::class, 'Invalid money format')
+        ->and(fn () => Money::parse('R$ 1.234.56'))->toThrow(InvalidArgumentException::class, 'Invalid money format')
+        ->and(fn () => Money::parse('1R$234,56'))->toThrow(InvalidArgumentException::class, 'Invalid money format')
+        ->and(fn () => Money::parse('R$ R$ 1.234,56'))->toThrow(InvalidArgumentException::class, 'Invalid money format');
+});
+
+it('keeps lenient parsing explicit for legacy inputs', function () {
+    expect(Money::parseLenient('R$ 1.23.4,56')->toDecimal())->toBe('1234.56')
+        ->and(Money::parseLenient('R$ 1.234,56')->toCents())->toBe(123456)
+        ->and(fn () => Money::parseLenient(''))->toThrow(InvalidArgumentException::class, 'Invalid money format');
 });
 
 it('parses custom currencies without symbol or grouping separators', function () {
@@ -65,7 +82,8 @@ it('parses custom currencies without symbol or grouping separators', function ()
         }
     };
 
-    expect(Money::parse('1234.56', $currency)->toCents())->toBe(123456);
+    expect(Money::parse('1234.56', $currency)->toCents())->toBe(123456)
+        ->and(fn () => Money::parse('1234.567', $currency))->toThrow(InvalidArgumentException::class, 'Invalid money format');
 });
 
 it('formats currencies without converting through float', function () {
@@ -88,7 +106,16 @@ it('covers formatter fallbacks for unusual currency definitions', function () {
 
     $formatter = new MoneyFormatter;
 
+    $emptySymbolCurrency = new class extends AbstractCurrency
+    {
+        public function __construct()
+        {
+            parent::__construct('NST', '', '.', ',', 'before', 2);
+        }
+    };
+
     expect($formatter->format(1234, $currency))->toBe('¤ 1234')
+        ->and($formatter->format(123, $emptySymbolCurrency))->toBe('1.23')
         ->and($formatter->format(-1234, $currency, false))->toBe('-1234');
 });
 
